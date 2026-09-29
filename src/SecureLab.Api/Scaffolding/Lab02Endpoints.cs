@@ -11,20 +11,44 @@ public static class Lab02Endpoints
     {
         app.MapGet("/api/incidents/search", async (string? q, string? sortBy, SecureLabDbContext db, CancellationToken ct) =>
         {
-            var order = sortBy switch
+            var query = db.Incidents.AsNoTracking();
+
+            if (!string.IsNullOrEmpty(q))
             {
-                null or "" or "createdAtUtc" => "created_at_utc DESC",
-                "severity" => "severity", "status" => "status", _ => sortBy
+                var escapedQ = q.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
+                var pattern = $"%{escapedQ}%";
+
+                query = query.Where(i =>
+                    EF.Functions.ILike(i.Title, pattern) ||
+                    EF.Functions.ILike(i.Description, pattern));
+            }
+
+            if (!string.IsNullOrEmpty(sortBy) && sortBy != "severity" && sortBy != "status" && sortBy != "createdAtUtc")
+            {
+                return Results.Problem("Недопустиме значення sortBy", statusCode: 400);
+            }
+
+            query = sortBy switch
+            {
+                "severity" => query.OrderBy(i => i.Severity),
+                "status" => query.OrderBy(i => i.Status),
+                _ => query.OrderByDescending(i => i.CreatedAtUtc)
             };
-            var sql = "SELECT * FROM incidents WHERE title ILIKE '%" + (q ?? "")
-                + "%' OR description ILIKE '%" + (q ?? "") + "%' ORDER BY " + order + " LIMIT 50";
-            var rows = await db.Incidents.FromSqlRaw(sql).AsNoTracking().ToListAsync(ct);
+
+            var rows = await query.Take(50).ToListAsync(ct);
+
             return Results.Ok(rows.Select(row => new
             {
-                row.Id, row.Title, row.Description,
-                Severity = row.Severity.ToString(), Status = row.Status.ToString(), row.CreatedAtUtc
+                row.Id,
+                row.Title,
+                row.Description,
+                Severity = row.Severity.ToString(),
+                Status = row.Status.ToString(),
+                row.CreatedAtUtc
             }));
         });
+
+
         app.MapPost("/api/incidents", async (CreateIncidentRequest request, SecureLabDbContext db, CancellationToken ct) =>
         {
             var errors = new Dictionary<string, string[]>();

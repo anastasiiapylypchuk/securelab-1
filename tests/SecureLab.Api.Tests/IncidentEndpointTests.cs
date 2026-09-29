@@ -53,4 +53,24 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
         Assert.DoesNotContain("innerHTML", script, StringComparison.Ordinal);
         Assert.Contains("textContent", script, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task CreateIncident_DuplicateTitle_Returns409Conflict()
+    {
+        var title = $"Regression-{Guid.NewGuid():N}";
+
+        var requestData = new
+        {
+            title = title,
+            description = "Це тестовий опис інциденту, який має більше 40 символів для валідації High.",
+            severity = "High",
+            occurredAtUtc = DateTimeOffset.UtcNow
+        };
+
+        var firstResponse = await _client.PostAsJsonAsync("/api/incidents", requestData);
+        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+
+        var secondResponse = await _client.PostAsJsonAsync("/api/incidents", requestData);
+        Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
+    }
 }
