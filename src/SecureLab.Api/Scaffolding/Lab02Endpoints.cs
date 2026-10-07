@@ -89,6 +89,11 @@ public static class Lab02Endpoints
                 }
             }
 
+            if (errors.Count == 0 && title.Equals(description, StringComparison.OrdinalIgnoreCase))
+            {
+                errors["description"] = ["Заголовок та опис не можуть бути однаковими."];
+            }
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);

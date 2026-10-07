@@ -73,4 +73,49 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
         var secondResponse = await _client.PostAsJsonAsync("/api/incidents", requestData);
         Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
     }
+
+    [Fact]
+    public async Task CreateIncident_InvalidDto_Returns400BadRequest()
+    {
+        var requestData = new
+        {
+            title = "",
+            severity = "SuperCritical", 
+            occurredAtUtc = DateTimeOffset.UtcNow
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/incidents", requestData);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task Search_WithSqlInjectionPayload_ReturnsEmptyResultAnd200()
+    {
+        var response = await _client.GetAsync("/api/incidents/search?q=zz-no-match%27%20OR%20TRUE%20--%20");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var results = await response.Content.ReadFromJsonAsync<List<IncidentListItemResponse>>();
+
+        Assert.NotNull(results);
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task CreateIncident_SameTitleAndDescription_Returns400BadRequest()
+    {
+        var requestData = new
+        {
+            title = "Тестовий інцидент",
+            description = "Тестовий інцидент",
+            severity = "Low",
+            occurredAtUtc = DateTimeOffset.UtcNow
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/incidents", requestData);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }
