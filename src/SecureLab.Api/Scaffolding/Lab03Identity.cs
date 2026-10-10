@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
@@ -31,6 +33,20 @@ public static class Lab03Identity
                 return Task.CompletedTask;
             };
         });
+
+        builder.Services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy("auth-login", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 30,
+                        Window = TimeSpan.FromSeconds(10),
+                        QueueLimit = 0
+                    }));
+        });
     }
 
     public static void MapLab03Identity(this WebApplication app)
@@ -40,38 +56,81 @@ public static class Lab03Identity
             // ЛР 03: завершіть DTO validation та перевірки довірчої межі.
             if (string.IsNullOrWhiteSpace(input.UserName) || string.IsNullOrWhiteSpace(input.Email)
                 || string.IsNullOrWhiteSpace(input.DisplayName) || string.IsNullOrEmpty(input.Password))
-                return Results.BadRequest();
+                return Results.BadRequest(new { message = "Registration failed" });
+
+            if (input.UserName.Trim().Length > 256 || input.Email.Trim().Length > 256
+                || input.DisplayName.Trim().Length > 120 || input.Password.Length > 100)
+                return Results.BadRequest(new { message = "Registration failed" });
+
             var user = new ApplicationUser
             {
                 Id = Guid.NewGuid(), UserName = input.UserName.Trim(), Email = input.Email.Trim(),
                 DisplayName = input.DisplayName.Trim()
             };
             var result = await users.CreateAsync(user, input.Password);
-            if (!result.Succeeded) return Results.BadRequest(new { message = "Registration failed" });
+
+            if (!result.Succeeded)
+            {
+                var codes = result.Errors.Select(e => e.Code).ToArray();
+                if (codes.Contains("DuplicateUserName") || codes.Contains("DuplicateEmail"))
+                {
+                    return Results.Conflict(new { message = "User with this name or email already exists" });
+                }
+                return Results.BadRequest(new { message = "Registration failed" });
+            }
+
             var role = await users.AddToRoleAsync(user, DbSeeder.ReporterRole);
             if (!role.Succeeded) throw new InvalidOperationException("Default role assignment failed.");
-            return Results.Created("/api/me", new { user.Id, user.UserName, user.DisplayName });
+
+            return Results.Created("/api/me", new RegisterResponseDto(user.Id, user.UserName, user.DisplayName));
         });
-        app.MapPost("/api/auth/login", async (LoginInput input, SignInManager<ApplicationUser> signIn) =>
+
+        app.MapPost("/api/auth/login", async (LoginInput input, SignInManager<ApplicationUser> signIn,
+    HttpContext httpContext, ILogger<Program> logger) => 
         {
             if (string.IsNullOrWhiteSpace(input.UserName) || string.IsNullOrEmpty(input.Password))
+            {
+                logger.LogInformation("Auth event {EventType}: result {Result}, trace {TraceId}",
+                    "login", "failure", httpContext.TraceIdentifier);
                 return Results.Unauthorized();
+            }
             var result = await signIn.PasswordSignInAsync(input.UserName, input.Password, false, false);
+
+            logger.LogInformation("Auth event {EventType}: result {Result}, trace {TraceId}",
+                "login", result.Succeeded ? "success" : "failure", httpContext.TraceIdentifier);
+
             return result.Succeeded ? Results.NoContent() : Results.Unauthorized();
+        }).RequireRateLimiting("auth-login");
+
+        app.MapPost("/api/auth/logout", async (SignInManager<ApplicationUser> signIn,
+             HttpContext httpContext, ILogger<Program> logger) =>
+        {
+            await signIn.SignOutAsync();
+            logger.LogInformation("Auth event {EventType}: result {Result}, trace {TraceId}",
+                "logout", "success", httpContext.TraceIdentifier);
+            return Results.NoContent();
         });
-        app.MapPost("/api/auth/logout", () => Results.StatusCode(StatusCodes.Status501NotImplemented));
-        // Навмисно хибна навчальна довіра: ЛР 03 замінює заявлений id на verified principal.
+
         app.MapGet("/api/me", async (HttpContext context, SecureLabDbContext db) =>
         {
-            if (!Guid.TryParse(context.Request.Headers["X-Demo-UserId"], out var claimedId))
-                return Results.StatusCode(StatusCodes.Status501NotImplemented);
-            var user = await db.Users.FindAsync(claimedId);
-            return user is null ? Results.NotFound() : Results.Ok(new { user.Id, user.UserName, user.DisplayName });
-        });
+            var idClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(idClaim, out var verifiedId))
+                return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+
+            var user = await db.Users.FindAsync(verifiedId);
+            return user is null ? Results.Unauthorized() : Results.Ok(new { user.Id, user.UserName, user.DisplayName });
+        }).RequireAuthorization(); 
+
         // Приклад лише mechanics: не повертає identity і не реалізує оцінювану operation.
         app.MapGet("/api/auth/session-check", () => Results.NoContent()).RequireAuthorization();
     }
 }
 
-public sealed record RegistrationInput(string? UserName, string? Email, string? DisplayName, string? Password);
+public sealed record RegistrationInput(
+    [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(256)] string UserName,
+    [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.EmailAddress, System.ComponentModel.DataAnnotations.StringLength(256)] string Email,
+    [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(120)] string DisplayName,
+    [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 10)] string Password);
+
+public sealed record RegisterResponseDto(Guid Id, string UserName, string DisplayName);
 public sealed record LoginInput(string? UserName, string? Password);

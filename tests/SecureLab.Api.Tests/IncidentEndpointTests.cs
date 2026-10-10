@@ -10,6 +10,10 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     : IClassFixture<SecureLabApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
+    private static string StudyPassword =>
+       Environment.GetEnvironmentVariable("SeedUsers__Password")
+       ?? throw new InvalidOperationException(
+           "Set local SeedUsers__Password outside Git.");
 
     [Fact]
     public async Task GetList_ReturnsSeededIncidents()
@@ -57,6 +61,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task CreateIncident_DuplicateTitle_Returns409Conflict()
     {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+
         var title = $"Regression-{Guid.NewGuid():N}";
 
         var requestData = new
@@ -67,10 +73,10 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
             occurredAtUtc = DateTimeOffset.UtcNow
         };
 
-        var firstResponse = await _client.PostAsJsonAsync("/api/incidents", requestData);
+        var firstResponse = await alice.PostAsJsonAsync("/api/incidents", requestData);
         Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
 
-        var secondResponse = await _client.PostAsJsonAsync("/api/incidents", requestData);
+        var secondResponse = await alice.PostAsJsonAsync("/api/incidents", requestData);
         Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
     }
 }
