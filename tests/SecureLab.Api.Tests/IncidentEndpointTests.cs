@@ -143,4 +143,144 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
+    private static async Task<Guid> CreateIncidentAsync(HttpClient client)
+    {
+        using var response = await client.PostAsJsonAsync("/api/incidents", new
+        {
+            title = $"Auth-{Guid.NewGuid():N}",
+            description = "Опис тестового інциденту для перевірки авторизації.",
+            severity = "Low",
+            occurredAtUtc = DateTimeOffset.UtcNow
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.GetProperty("id").GetGuid();
+    }
+
+    [Fact]
+    public async Task Update_AsOwner_ChangesContent()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+        try
+        {
+            using var response = await alice.PutAsJsonAsync($"/api/incidents/{id}",
+                new { title = "Нова назва власника", description = "Новий опис від власника інциденту." });
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            using var doc = JsonDocument.Parse(await alice.GetStringAsync($"/api/incidents/{id}"));
+            Assert.Equal("Нова назва власника", doc.RootElement.GetProperty("title").GetString());
+        }
+        finally
+        {
+            await alice.DeleteAsync($"/api/incidents/{id}");
+        }
+    }
+
+    [Fact]
+    public async Task Update_AsOtherReporter_Returns404_AndDoesNotChangeIncident()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var bob = await factory.LoginAsync("bob", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+        try
+        {
+            var before = await alice.GetStringAsync($"/api/incidents/{id}");
+
+            using var response = await bob.PutAsJsonAsync($"/api/incidents/{id}",
+                new { title = "Змінено Бобом", description = "Цей текст не повинен зберегтися." });
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal(before, await alice.GetStringAsync($"/api/incidents/{id}"));
+        }
+        finally
+        {
+            await alice.DeleteAsync($"/api/incidents/{id}");
+        }
+    }
+
+    [Fact]
+    public async Task Update_AsAnalyst_Returns403_AndDoesNotChangeIncident()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var morgan = await factory.LoginAsync("morgan", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+        try
+        {
+            var before = await alice.GetStringAsync($"/api/incidents/{id}");
+
+            using var response = await morgan.PutAsJsonAsync($"/api/incidents/{id}",
+                new { title = "Змінено аналітиком", description = "Цей текст не повинен зберегтися." });
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.Equal(before, await alice.GetStringAsync($"/api/incidents/{id}"));
+        }
+        finally
+        {
+            await alice.DeleteAsync($"/api/incidents/{id}");
+        }
+    }
+
+    [Fact]
+    public async Task Update_WithForgedProtectedFields_IgnoresThem()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+        try
+        {
+            using var response = await alice.PutAsJsonAsync($"/api/incidents/{id}", new
+            {
+                title = "Назва після підробки",
+                description = "Опис після спроби підмінити захищені поля.",
+                ownerUserId = DbSeeder.BobId,
+                status = "Closed",
+                severity = "Critical",
+                role = "Administrator"
+            });
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            using var doc = JsonDocument.Parse(await alice.GetStringAsync($"/api/incidents/{id}"));
+            Assert.Equal("Назва після підробки", doc.RootElement.GetProperty("title").GetString());
+            Assert.Equal("New", doc.RootElement.GetProperty("status").GetString());
+            Assert.Equal("Low", doc.RootElement.GetProperty("severity").GetString());
+            Assert.Equal("Аліса Коваль", doc.RootElement.GetProperty("ownerDisplayName").GetString());
+        }
+        finally
+        {
+            await alice.DeleteAsync($"/api/incidents/{id}");
+        }
+    }
+
+    [Fact]
+    public async Task Delete_AsOtherReporter_Returns404_AndIncidentRemains()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var bob = await factory.LoginAsync("bob", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+        try
+        {
+            using var response = await bob.DeleteAsync($"/api/incidents/{id}");
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            using var stillThere = await alice.GetAsync($"/api/incidents/{id}");
+            Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
+        }
+        finally
+        {
+            await alice.DeleteAsync($"/api/incidents/{id}");
+        }
+    }
+
+    [Fact]
+    public async Task Delete_AsOwner_RemovesIncident()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+
+        using var response = await alice.DeleteAsync($"/api/incidents/{id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        using var gone = await alice.GetAsync($"/api/incidents/{id}");
+        Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+    }
 }

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data.Entities;
 using SecureLab.Api.Presentation.Contracts;
@@ -18,7 +20,13 @@ public static class IncidentEndpoints
             .WithName("GetIncidents")
             .Produces<IReadOnlyList<IncidentListItemResponse>>()
             .ProducesValidationProblem();
+        
+        group.MapPut("/{id:guid}", UpdateAsync)
+            .WithName("UpdateIncident");
 
+        group.MapDelete("/{id:guid}", DeleteAsync)
+            .WithName("DeleteIncident");
+        
         group.MapGet("/{id:guid}", GetDetailsAsync)
             .WithName("GetIncidentDetails")
             .Produces<IncidentDetailsResponse>()
@@ -79,6 +87,98 @@ public static class IncidentEndpoints
     private static IResult IncidentNotFound() => Results.Problem(
         title: "Інцидент не знайдено",
         statusCode: StatusCodes.Status404NotFound);
+    private static async Task<IResult> UpdateAsync(
+        Guid id,
+        UpdateIncidentRequest request,
+        HttpContext httpContext,
+        IAuthorizationService authorizationService,
+        SecureLabDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var incident = await dbContext.Incidents
+            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (incident is null)
+        {
+            return IncidentNotFound();
+        }
+
+        var canRead = await authorizationService.AuthorizeAsync(
+            httpContext.User, incident, IncidentOperations.Read);
+        if (!canRead.Succeeded)
+        {
+            return IncidentNotFound();
+        }
+
+        var canUpdate = await authorizationService.AuthorizeAsync(
+            httpContext.User, incident, IncidentOperations.Update);
+        if (!canUpdate.Succeeded)
+        {
+            return Results.Forbid();
+        }
+
+        var title = request.Title?.Trim() ?? "";
+        var description = request.Description?.Trim() ?? "";
+        var errors = new Dictionary<string, string[]>();
+
+        if (string.IsNullOrEmpty(title))
+            errors["title"] = ["Title is required."];
+        else if (title.Length > 160)
+            errors["title"] = ["Title cannot exceed 160 characters."];
+
+        if (string.IsNullOrEmpty(description))
+            errors["description"] = ["Description is required."];
+        else if (description.Length > 4000)
+            errors["description"] = ["Description cannot exceed 4000 characters."];
+        else if ((incident.Severity == IncidentSeverity.High || incident.Severity == IncidentSeverity.Critical)
+                 && description.Length < 40)
+            errors["description"] = ["Для критичності High або Critical опис має містити щонайменше 40 символів."];
+
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
+        incident.Title = title;
+        incident.Description = description;
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> DeleteAsync(
+        Guid id,
+        HttpContext httpContext,
+        IAuthorizationService authorizationService,
+        SecureLabDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var incident = await dbContext.Incidents
+            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (incident is null)
+        {
+            return IncidentNotFound();
+        }
+
+        var canRead = await authorizationService.AuthorizeAsync(
+            httpContext.User, incident, IncidentOperations.Read);
+        if (!canRead.Succeeded)
+        {
+            return IncidentNotFound();
+        }
+
+        var canDelete = await authorizationService.AuthorizeAsync(
+            httpContext.User, incident, IncidentOperations.Delete);
+        if (!canDelete.Succeeded)
+        {
+            return Results.Forbid();
+        }
+
+        dbContext.Incidents.Remove(incident);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
+    }
     
     private static async Task<IResult> GetSeveritySummaryAsync(
     IncidentQueries queries,
