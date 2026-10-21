@@ -86,10 +86,14 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
                 comment.CreatedAtUtc))
             .SingleOrDefaultAsync(cancellationToken);
     }
-    public async Task<IReadOnlyList<IncidentSeveritySummaryResponse>> GetSeveritySummaryAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<IncidentSeveritySummaryResponse>> GetSeveritySummaryAsync(
+        Guid currentUserId,
+        bool isAnalyst,
+        CancellationToken cancellationToken)
     {
         var dbSummary = await dbContext.Incidents
             .AsNoTracking()
+            .Where(i => isAnalyst || i.OwnerUserId == currentUserId)
             .GroupBy(i => i.Severity)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
@@ -102,7 +106,7 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
             .ToList();
 
         logger.LogInformation(
-            "���������� ������� ��������� �� severity. ʳ������ �������� ���� � ��: {ActiveGroupsCount}.", 
+            "Severity summary built. Active groups in database: {ActiveGroupsCount}.",
             dbSummary.Count);
 
         return result;

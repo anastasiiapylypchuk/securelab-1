@@ -268,10 +268,17 @@ public static class IncidentEndpoints
         return Results.NoContent();
     }
     private static async Task<IResult> GetSeveritySummaryAsync(
-    IncidentQueries queries,
-    CancellationToken cancellationToken)
+        HttpContext httpContext,
+        IncidentQueries queries,
+        CancellationToken cancellationToken)
     {
-        var summary = await queries.GetSeveritySummaryAsync(cancellationToken);
+        if (!Guid.TryParse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        var isAnalyst = httpContext.User.IsInRole(DbSeeder.AnalystRole);
+        var summary = await queries.GetSeveritySummaryAsync(userId, isAnalyst, cancellationToken);
         return Results.Ok(summary);
     }
 }

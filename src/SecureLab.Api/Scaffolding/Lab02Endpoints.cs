@@ -10,9 +10,15 @@ public static class Lab02Endpoints
 {
     public static void MapLab02Endpoints(this WebApplication app)
     {
-        app.MapGet("/api/incidents/search", async (string? q, string? sortBy, SecureLabDbContext db, CancellationToken ct) =>
+        app.MapGet("/api/incidents/search", async (string? q, string? sortBy, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
         {
-            var query = db.Incidents.AsNoTracking();
+            if (!Guid.TryParse(httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+                return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+            var isAnalyst = httpContext.User.IsInRole(DbSeeder.AnalystRole);
+
+            var query = db.Incidents
+                .AsNoTracking()
+                .Where(i => isAnalyst || i.OwnerUserId == userId);
 
             if (!string.IsNullOrEmpty(q))
             {
@@ -47,7 +53,7 @@ public static class Lab02Endpoints
                 Status = row.Status.ToString(),
                 row.CreatedAtUtc
             }));
-        });
+        }).RequireAuthorization();
 
 
         app.MapPost("/api/incidents", async (CreateIncidentRequest request, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
