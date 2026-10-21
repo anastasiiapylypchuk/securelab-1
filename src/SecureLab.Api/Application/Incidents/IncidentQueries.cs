@@ -68,6 +68,24 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
     }
+    public Task<IncidentCommentResponse?> GetCommentAsync(
+        Guid commentId,
+        Guid currentUserId,
+        bool isAnalyst,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.IncidentComments
+            .AsNoTracking()
+            .Where(comment => comment.Id == commentId
+                              && (isAnalyst
+                                  || (comment.Incident.OwnerUserId == currentUserId && !comment.IsInternal)))
+            .Select(comment => new IncidentCommentResponse(
+                comment.Id,
+                comment.Author.DisplayName,
+                comment.Text,
+                comment.CreatedAtUtc))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
     public async Task<IReadOnlyList<IncidentSeveritySummaryResponse>> GetSeveritySummaryAsync(CancellationToken cancellationToken)
     {
         var dbSummary = await dbContext.Incidents

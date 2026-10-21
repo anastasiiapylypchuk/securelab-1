@@ -353,4 +353,53 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
             await alice.DeleteAsync($"/api/incidents/{id}");
         }
     }
+    private static readonly Guid AlicePublicCommentId = Guid.Parse("30000000-0000-0000-0000-000000000001");
+    private static readonly Guid BobPublicCommentId = Guid.Parse("30000000-0000-0000-0000-000000000002");
+    private static readonly Guid AliceInternalCommentId = Guid.Parse("30000000-0000-0000-0000-000000000003");
+
+    [Fact]
+    public async Task GetComment_OfOtherReportersIncident_Returns404()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var response = await alice.GetAsync($"/api/incident-comments/{BobPublicCommentId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.DoesNotContain("журналу автентифікації", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task GetComment_PublicOnOwnIncident_Returns200()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var response = await alice.GetAsync($"/api/incident-comments/{AlicePublicCommentId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetComment_InternalOnOwnIncident_Returns404_ForReporter()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var response = await alice.GetAsync($"/api/incident-comments/{AliceInternalCommentId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.DoesNotContain("Внутрішня нотатка", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task GetComment_Internal_Returns200_ForAnalyst()
+    {
+        using var morgan = await factory.LoginAsync("morgan", StudyPassword);
+        using var response = await morgan.GetAsync($"/api/incident-comments/{AliceInternalCommentId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetComment_Anonymous_Returns401()
+    {
+        using var response = await _client.GetAsync($"/api/incident-comments/{AlicePublicCommentId}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
 }

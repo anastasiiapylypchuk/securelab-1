@@ -39,6 +39,10 @@ public static class IncidentEndpoints
         group.MapGet("/severity-summary", GetSeveritySummaryAsync)
             .WithName("GetIncidentSeveritySummary")
             .Produces<IReadOnlyList<IncidentSeveritySummaryResponse>>();
+        
+        endpoints.MapGet("/api/incident-comments/{id:guid}", GetCommentAsync)
+            .WithName("GetIncidentComment")
+            .RequireAuthorization();
         return endpoints;
     }
 
@@ -87,7 +91,21 @@ public static class IncidentEndpoints
         var incident = await queries.GetDetailsAsync(id, userId, isAnalyst, cancellationToken);
         return incident is null ? IncidentNotFound() : Results.Ok(incident);
     }
+    private static async Task<IResult> GetCommentAsync(
+        Guid id,
+        HttpContext httpContext,
+        IncidentQueries queries,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
 
+        var isAnalyst = httpContext.User.IsInRole(DbSeeder.AnalystRole);
+        var comment = await queries.GetCommentAsync(id, userId, isAnalyst, cancellationToken);
+        return comment is null ? IncidentNotFound() : Results.Ok(comment);
+    }
     private static IResult IncidentNotFound() => Results.Problem(
         title: "Інцидент не знайдено",
         statusCode: StatusCodes.Status404NotFound);
