@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using SecureLab.Api.Application.Incidents;
@@ -23,7 +24,10 @@ public static class IncidentEndpoints
         
         group.MapPut("/{id:guid}", UpdateAsync)
             .WithName("UpdateIncident");
-
+        
+        group.MapPost("/{id:guid}/triage", TriageAsync)
+            .WithName("TriageIncident");
+        
         group.MapDelete("/{id:guid}", DeleteAsync)
             .WithName("DeleteIncident");
         
@@ -179,7 +183,72 @@ public static class IncidentEndpoints
 
         return Results.NoContent();
     }
-    
+    private static async Task<IResult> TriageAsync(
+        Guid id,
+        HttpContext httpContext,
+        IAuthorizationService authorizationService,
+        SecureLabDbContext dbContext,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var incident = await dbContext.Incidents
+            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (incident is null)
+        {
+            return IncidentNotFound();
+        }
+
+        var canRead = await authorizationService.AuthorizeAsync(
+            httpContext.User, incident, IncidentOperations.Read);
+        if (!canRead.Succeeded)
+        {
+            return IncidentNotFound();
+        }
+
+        var canTriage = await authorizationService.AuthorizeAsync(
+            httpContext.User, incident, IncidentOperations.Triage);
+        if (!canTriage.Succeeded)
+        {
+            logger.LogWarning(
+                "authorization.denied subject={SubjectId} action={Action} "
+                + "resource={ResourceId} result={Result} "
+                + "occurredAtUtc={OccurredAtUtc:O} traceId={TraceId}",
+                httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier),
+                "incident.triage",
+                incident.Id,
+                "denied",
+                DateTimeOffset.UtcNow,
+                Activity.Current?.Id ?? httpContext.TraceIdentifier);
+            return Results.Forbid();
+        }
+
+        if (incident.Status != IncidentStatus.New)
+        {
+            return Results.Problem(
+                title: "Перехід неможливий",
+                detail: "Triage дозволено лише для статусу New.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+
+        _ = Guid.TryParse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId);
+        var now = DateTimeOffset.UtcNow;
+
+        dbContext.IncidentStatusHistory.Add(new IncidentStatusHistory
+        {
+            Id = Guid.NewGuid(),
+            IncidentId = incident.Id,
+            ChangedByUserId = actorId,
+            OldStatus = incident.Status,
+            NewStatus = IncidentStatus.Triaged,
+            Note = "Triage",
+            CreatedAtUtc = now
+        });
+        incident.Status = IncidentStatus.Triaged;
+        incident.UpdatedAtUtc = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
+    }
     private static async Task<IResult> GetSeveritySummaryAsync(
     IncidentQueries queries,
     CancellationToken cancellationToken)

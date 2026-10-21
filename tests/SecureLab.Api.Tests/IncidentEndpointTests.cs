@@ -283,4 +283,74 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
         using var gone = await alice.GetAsync($"/api/incidents/{id}");
         Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
     }
+    [Fact]
+    public async Task Triage_AsOwnerReporter_Returns403_AndStatusUnchanged()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+        try
+        {
+            using var response = await alice.PostAsync($"/api/incidents/{id}/triage", content: null);
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            using var doc = JsonDocument.Parse(await alice.GetStringAsync($"/api/incidents/{id}"));
+            Assert.Equal("New", doc.RootElement.GetProperty("status").GetString());
+        }
+        finally
+        {
+            await alice.DeleteAsync($"/api/incidents/{id}");
+        }
+    }
+
+    [Fact]
+    public async Task Triage_AsAnalyst_MovesNewToTriaged()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var morgan = await factory.LoginAsync("morgan", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+        try
+        {
+            using var response = await morgan.PostAsync($"/api/incidents/{id}/triage", content: null);
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            using var doc = JsonDocument.Parse(await alice.GetStringAsync($"/api/incidents/{id}"));
+            Assert.Equal("Triaged", doc.RootElement.GetProperty("status").GetString());
+        }
+        finally
+        {
+            await alice.DeleteAsync($"/api/incidents/{id}");
+        }
+    }
+
+    [Fact]
+    public async Task Triage_WhenAlreadyTriaged_Returns409()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var morgan = await factory.LoginAsync("morgan", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+
+        using var first = await morgan.PostAsync($"/api/incidents/{id}/triage", content: null);
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+
+        using var second = await morgan.PostAsync($"/api/incidents/{id}/triage", content: null);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task Triage_AsOtherReporter_Returns404()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var bob = await factory.LoginAsync("bob", StudyPassword);
+        var id = await CreateIncidentAsync(alice);
+        try
+        {
+            using var response = await bob.PostAsync($"/api/incidents/{id}/triage", content: null);
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+        finally
+        {
+            await alice.DeleteAsync($"/api/incidents/{id}");
+        }
+    }
 }

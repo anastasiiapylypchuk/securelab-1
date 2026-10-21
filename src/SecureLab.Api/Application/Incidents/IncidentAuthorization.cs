@@ -16,6 +16,8 @@ public static class IncidentOperations
 
     public static readonly OperationAuthorizationRequirement Delete =
         new() { Name = nameof(Delete) };
+    public static readonly OperationAuthorizationRequirement Triage =
+        new() { Name = nameof(Triage) };
 }
 
 public sealed class IncidentAuthorizationHandler
@@ -36,6 +38,7 @@ public sealed class IncidentAuthorizationHandler
             nameof(IncidentOperations.Read) => isOwner || isAnalyst,
             nameof(IncidentOperations.Update) => isOwner,
             nameof(IncidentOperations.Delete) => isOwner && incident.Status == IncidentStatus.New,
+            nameof(IncidentOperations.Triage) => isAnalyst,
             _ => false
         };
 
