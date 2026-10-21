@@ -32,6 +32,7 @@ public static class IncidentEndpoints
 
     private static async Task<IResult> GetListAsync(
         string? status,
+        HttpContext httpContext,
         IncidentQueries queries,
         CancellationToken cancellationToken)
     {
@@ -50,7 +51,13 @@ public static class IncidentEndpoints
             parsedStatus = candidate;
         }
 
-        return Results.Ok(await queries.GetListAsync(parsedStatus, cancellationToken));
+        if (!Guid.TryParse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            return Results.Challenge();
+        }
+        var isAnalyst = httpContext.User.IsInRole(DbSeeder.AnalystRole);
+
+        return Results.Ok(await queries.GetListAsync(parsedStatus, userId, isAnalyst, cancellationToken));
     }
 
     private static async Task<IResult> GetDetailsAsync(

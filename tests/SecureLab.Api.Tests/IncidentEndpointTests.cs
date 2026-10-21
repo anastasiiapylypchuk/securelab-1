@@ -16,11 +16,20 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
            "Set local SeedUsers__Password outside Git.");
 
     [Fact]
-    public async Task GetList_ReturnsSeededIncidents()
+    public async Task GetList_AsReporter_ReturnsOnlyOwnIncidents()
     {
         using var alice = await factory.LoginAsync("alice", StudyPassword);
-        var incidents = await alice.GetFromJsonAsync<List<IncidentListItemResponse>>(
-            "/api/incidents");
+        var incidents = await alice.GetFromJsonAsync<List<IncidentListItemResponse>>("/api/incidents");
+
+        Assert.NotNull(incidents);
+        Assert.Contains(incidents, incident => incident.Id == DbSeeder.AliceIncidentId);
+        Assert.DoesNotContain(incidents, incident => incident.Id == DbSeeder.BobIncidentId);
+    }
+    [Fact]
+    public async Task GetList_AsAnalyst_ReturnsAllIncidents()
+    {
+        using var morgan = await factory.LoginAsync("morgan", StudyPassword);
+        var incidents = await morgan.GetFromJsonAsync<List<IncidentListItemResponse>>("/api/incidents");
 
         Assert.NotNull(incidents);
         Assert.Contains(incidents, incident => incident.Id == DbSeeder.AliceIncidentId);

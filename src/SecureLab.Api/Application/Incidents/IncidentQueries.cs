@@ -9,11 +9,16 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
 {
     public async Task<IReadOnlyList<IncidentListItemResponse>> GetListAsync(
         IncidentStatus? status,
+        Guid currentUserId,
+        bool isAnalyst,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("Loading incidents with status filter {Status}", status);
 
-        var query = dbContext.Incidents.AsNoTracking();
+        var query = dbContext.Incidents
+            .AsNoTracking()
+            .Where(incident => isAnalyst || incident.OwnerUserId == currentUserId);
+
         if (status is not null)
         {
             query = query.Where(incident => incident.Status == status);
