@@ -18,7 +18,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task GetList_ReturnsSeededIncidents()
     {
-        var incidents = await _client.GetFromJsonAsync<List<IncidentListItemResponse>>(
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        var incidents = await alice.GetFromJsonAsync<List<IncidentListItemResponse>>(
             "/api/incidents");
 
         Assert.NotNull(incidents);
@@ -29,8 +30,9 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task GetDetails_ForUnknownId_ReturnsProblemDetails404()
     {
-        using var response = await _client.GetAsync($"/api/incidents/{Guid.NewGuid()}");
-
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var response = await alice.GetAsync($"/api/incidents/{Guid.NewGuid()}");
+        
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
@@ -38,7 +40,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task GetDetails_DoesNotExposeInternalOwnerFields()
     {
-        using var response = await _client.GetAsync(
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var response = await alice.GetAsync(
             $"/api/incidents/{DbSeeder.AliceIncidentId}");
         var json = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(json);
@@ -78,5 +81,57 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
 
         var secondResponse = await alice.PostAsJsonAsync("/api/incidents", requestData);
         Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
+    }
+    [Fact]
+    public async Task GetDetails_Anonymous_Returns401()
+    {
+        using var response = await _client.GetAsync($"/api/incidents/{DbSeeder.AliceIncidentId}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetDetails_AsOwner_ReturnsOwnIncident()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+        using var response = await alice.GetAsync($"/api/incidents/{DbSeeder.AliceIncidentId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(DbSeeder.AliceIncidentId, doc.RootElement.GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task GetDetails_AsOtherReporter_Returns404_SameAsUnknownId_AndLeaksNothing()
+    {
+        using var alice = await factory.LoginAsync("alice", StudyPassword);
+
+        using var foreign = await alice.GetAsync($"/api/incidents/{DbSeeder.BobIncidentId}");
+        using var unknown = await alice.GetAsync($"/api/incidents/{Guid.NewGuid()}");
+        var foreignBody = await foreign.Content.ReadAsStringAsync();
+        var unknownBody = await unknown.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        Assert.Equal(unknown.StatusCode, foreign.StatusCode);
+        Assert.Equal(unknown.Content.Headers.ContentType?.ToString(),
+                     foreign.Content.Headers.ContentType?.ToString());
+        Assert.DoesNotContain("Боб", foreignBody);
+        Assert.DoesNotContain("Невідома спроба входу", foreignBody);
+
+        using var f = JsonDocument.Parse(foreignBody);
+        using var u = JsonDocument.Parse(unknownBody);
+        Assert.Equal(u.RootElement.GetProperty("title").GetString(),
+                     f.RootElement.GetProperty("title").GetString());
+        Assert.Equal(u.RootElement.GetProperty("status").GetInt32(),
+                     f.RootElement.GetProperty("status").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetDetails_AsAnalyst_ReadsOtherUsersIncident()
+    {
+        using var morgan = await factory.LoginAsync("morgan", StudyPassword);
+        using var response = await morgan.GetAsync($"/api/incidents/{DbSeeder.AliceIncidentId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }
