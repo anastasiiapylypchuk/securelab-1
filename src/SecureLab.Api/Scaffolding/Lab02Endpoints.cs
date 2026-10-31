@@ -37,9 +37,9 @@ public static class Lab02Endpoints
 
             query = sortBy switch
             {
-                "severity" => query.OrderBy(i => i.Severity),
-                "status" => query.OrderBy(i => i.Status),
-                _ => query.OrderByDescending(i => i.CreatedAtUtc)
+                "severity" => query.OrderBy(i => i.Severity).ThenBy(i => i.Id),
+                "status" => query.OrderBy(i => i.Status).ThenBy(i => i.Id),
+                _ => query.OrderByDescending(i => i.CreatedAtUtc).ThenBy(i => i.Id)
             };
 
             var rows = await query.Take(50).ToListAsync(ct);
