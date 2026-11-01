@@ -65,7 +65,7 @@ app.Use(async (context, next) =>
         && context.Request.Path.StartsWithSegments("/scalar");
     if (!isDevelopmentApiReference)
     {
-        context.Response.Headers["Content-Security-Policy-Report-Only"] = csp;
+        context.Response.Headers["Content-Security-Policy"] = csp;
     }
     await next(context);
 });
