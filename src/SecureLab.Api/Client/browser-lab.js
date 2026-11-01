@@ -1,17 +1,20 @@
 let current;
 const id = () => encodeURIComponent(document.querySelector("#incident-id").value.trim());
 const status = document.querySelector("#status");
+function setPlainText(element, value) {
+  element.textContent = value ?? "";
+}
 async function load() {
   const response = await fetch(`/api/incidents/${id()}`);
   status.textContent = `GET: ${response.status}`;
   if (!response.ok) return;
   current = await response.json();
   document.querySelector("#title").textContent = current.title;
-  document.querySelector("#description").innerHTML = current.description;
+  setPlainText(document.querySelector("#description"), current.description);
   document.querySelector("#comments").replaceChildren();
   for (const comment of current.comments ?? []) {
     const paragraph = document.createElement("p");
-    paragraph.innerHTML = comment.text;
+    setPlainText(paragraph, comment.text);
     document.querySelector("#comments").append(paragraph);
   }
   document.querySelector("#edit").elements.description.value = current.description;
