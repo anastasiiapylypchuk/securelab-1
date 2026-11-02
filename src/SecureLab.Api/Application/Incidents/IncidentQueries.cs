@@ -9,11 +9,16 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
 {
     public async Task<IReadOnlyList<IncidentListItemResponse>> GetListAsync(
         IncidentStatus? status,
+        Guid currentUserId,
+        bool isAnalyst,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("Loading incidents with status filter {Status}", status);
 
-        var query = dbContext.Incidents.AsNoTracking();
+        var query = dbContext.Incidents
+            .AsNoTracking()
+            .Where(incident => isAnalyst || incident.OwnerUserId == currentUserId);
+
         if (status is not null)
         {
             query = query.Where(incident => incident.Status == status);
@@ -31,13 +36,18 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
             .ToListAsync(cancellationToken);
     }
 
-    public Task<IncidentDetailsResponse?> GetDetailsAsync(Guid id, CancellationToken cancellationToken)
+    public Task<IncidentDetailsResponse?> GetDetailsAsync(
+        Guid id,
+        Guid currentUserId,
+        bool isAnalyst,
+        CancellationToken cancellationToken)
     {
         logger.LogInformation("Loading incident {IncidentId}", id);
 
         return dbContext.Incidents
             .AsNoTracking()
-            .Where(incident => incident.Id == id)
+            .Where(incident => incident.Id == id
+                               && (isAnalyst || incident.OwnerUserId == currentUserId))
             .Select(incident => new IncidentDetailsResponse(
                 incident.Id,
                 incident.Title,
@@ -58,10 +68,32 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
     }
-    public async Task<IReadOnlyList<IncidentSeveritySummaryResponse>> GetSeveritySummaryAsync(CancellationToken cancellationToken)
+    public Task<IncidentCommentResponse?> GetCommentAsync(
+        Guid commentId,
+        Guid currentUserId,
+        bool isAnalyst,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.IncidentComments
+            .AsNoTracking()
+            .Where(comment => comment.Id == commentId
+                              && (isAnalyst
+                                  || (comment.Incident.OwnerUserId == currentUserId && !comment.IsInternal)))
+            .Select(comment => new IncidentCommentResponse(
+                comment.Id,
+                comment.Author.DisplayName,
+                comment.Text,
+                comment.CreatedAtUtc))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+    public async Task<IReadOnlyList<IncidentSeveritySummaryResponse>> GetSeveritySummaryAsync(
+        Guid currentUserId,
+        bool isAnalyst,
+        CancellationToken cancellationToken)
     {
         var dbSummary = await dbContext.Incidents
             .AsNoTracking()
+            .Where(i => isAnalyst || i.OwnerUserId == currentUserId)
             .GroupBy(i => i.Severity)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
@@ -74,7 +106,7 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
             .ToList();
 
         logger.LogInformation(
-            "Сформовано підсумок інцидентів за severity. Кількість активних груп у БД: {ActiveGroupsCount}.", 
+            "Severity summary built. Active groups in database: {ActiveGroupsCount}.",
             dbSummary.Count);
 
         return result;

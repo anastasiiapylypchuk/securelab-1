@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="uk"><meta charset="utf-8"><title>ЛР 03 — сеанс</title>
+<h1>Навчальний сеанс</h1>
+
+<form id="register"><label>Ім’я користувача <input name="userName" required></label>
+<label>Email <input name="email" type="email" required></label>
+<label>Відображуване ім’я <input name="displayName" required></label>
+<label>Пароль <input name="password" type="password" autocomplete="new-password" required></label>
+<button>Зареєструватися</button></form>
+<pre id="registerResult"></pre>
+
+<form id="login"><label>Ім’я <input name="userName" autocomplete="username" required></label>
+<label>Пароль <input name="password" type="password" autocomplete="current-password" required></label><button>Увійти</button></form>
+<button id="me">Мій профіль</button><button id="logout">Вийти</button><pre id="result"></pre>
+
+<pre id="profile"></pre>
+
+<form id="create">
+<label>Заголовок <input name="title" required></label>
+<label>Опис <textarea name="description" required></textarea></label>
+<label>Критичність <select name="severity"><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></label>
+<label>Час події <input name="occurredAtUtc" type="datetime-local" required></label>
+<button>Створити</button></form>
+<pre id="createResult"></pre>
+<script src="auth-lab.js" defer></script></html>

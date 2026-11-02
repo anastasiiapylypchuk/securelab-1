@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using SecureLab.Api.Scaffolding;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using SecureLab.Api.Application.Incidents;
@@ -19,6 +21,23 @@ var connectionString = builder.Configuration.GetConnectionString("SecureLab")
 builder.Services.AddDbContext<SecureLabDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IncidentQueries>();
+builder.Services.AddSingleton<IAuthorizationHandler, IncidentAuthorizationHandler>();
+builder.AddLab03Identity();
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("Lab05BrowserProbe", policy =>
+        {
+            policy.WithOrigins("http://localhost:4173")
+                .WithMethods("GET")
+                .WithHeaders("X-Lab-Cors-Probe")
+                .AllowCredentials();
+        });
+    });
+}
 
 var app = builder.Build();
 
@@ -33,10 +52,21 @@ if (resetRequested)
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
+var csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; "
+          + "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; "
+          + "frame-ancestors 'none'";
+
 app.Use(async (context, next) =>
 {
     context.Response.Headers.XContentTypeOptions = "nosniff";
     context.Response.Headers.Append("Referrer-Policy", "no-referrer");
+    var isDevelopmentApiReference =
+        app.Environment.IsDevelopment()
+        && context.Request.Path.StartsWithSegments("/scalar");
+    if (!isDevelopmentApiReference)
+    {
+        context.Response.Headers["Content-Security-Policy"] = csp;
+    }
     await next(context);
 });
 
@@ -45,6 +75,15 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
+
+app.UseRouting();
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors("Lab05BrowserProbe");
+}
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -60,6 +99,8 @@ app.MapGet("/health", async (SecureLabDbContext dbContext, CancellationToken can
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
 app.MapIncidentEndpoints();
+app.MapLab03Identity();
+app.MapLab02Endpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();

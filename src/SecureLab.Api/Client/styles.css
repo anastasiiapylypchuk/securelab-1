@@ -138,3 +138,11 @@ select {
     grid-template-columns: 1fr;
   }
 }
+.summary-section {
+  margin-bottom: 1rem;
+}
+
+#summaryStatus {
+  margin-left: 10px;
+  font-weight: bold;
+}
