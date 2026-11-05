@@ -177,3 +177,42 @@ safe-url.js / атрибут: `resources/copyable/safe-url.js` у Console → 7 
 
 Пояснення text/attribute/URL/JavaScript та ризик third-party scripts — `docs/report-lab-05.md`, розділ «Додатково для Відмінно».
 
+## Додатково (Відмінно): media type CSP-звіту і довіра до повідомлення
+
+Локальний аналіз двох навчальних повідомлень без collector endpoint і без мережевої доставки. Файл перевірок: `tests/browser/csp-report-type.js`. У CSP проєкту (`Program.cs`, коміт `40eec3e`) немає `report-uri` / `report-to`, тому браузер CSP-звіти нікуди не надсилає.
+
+### Перевірка media type
+
+Початкова функція `t => t.startsWith("application/csp-report")` помиляється: приймає C (`application/csp-report-fake`), F (`application/csp-reporting`) і власний контроль G (`application/csp-report+json`) — надто широкий збіг за префіксом; відхиляє E (`Application/CSP-Report; charset=UTF-8`) — надто вузька перевірка з урахуванням регістру.
+
+```diff
+-const acceptsType = t => t.startsWith("application/csp-report");
++const acceptsType = t => t.split(";", 1)[0].trim().toLowerCase() === "application/csp-report";
+```
+
+Результат після зміни: A, B, E прийнято; C, D, F, G відхилено; 7 assertions — `PASS`. Помилку надто широкого matcher відсікають assertions C, F і G; помилку з регістром — assertion E.
+
+### Поля звіту
+
+| Поле | Значення | Зміст |
+|---|---|---|
+| `effective-directive` | `img-src` | директива, яку порушило завантаження; у моїй CSP `img-src 'self'` задано явно |
+| `blocked-uri` | `http://localhost:4173/x.png` | ресурс, що не пройшов policy (інший origin — порт 4173) |
+| `disposition` | `enforce` / `report` | `enforce` — ресурс заблоковано; `report` — порушення лише записано (report-only) |
+
+### Таблиця довіри до двох повідомлень
+
+Обидва JSON — навчальні повідомлення невідомого походження. Прийнятний `Content-Type` підтверджує лише формат, а не автора: такий JSON може вручну скласти будь-який клієнт.
+
+| Поле / твердження | Заявлено повідомленням | Підтверджено своїм документом і Console | Лишається невідомим |
+|---|---|---|---|
+| Директива | `img-src` (обидва JSON) | моя CSP містить `img-src 'self'` (header документа `/` і `/browser-lab.html`, 200); Console: `…violates the following Content Security Policy directive: "img-src 'self'"` | чи стосується саме це повідомлення мого запуску |
+| Заблокований ресурс | `http://localhost:4173/x.png` | той самий URL я сама запросила пробою `new Image().src = "http://localhost:4173/x.png"` на `http://localhost:5080/` | хто ініціював запит, з якої сторінки й браузера; у JSON немає `document-uri`, `original-policy`, часу |
+| Режим, JSON 1 | `disposition: enforce` | коміт `40eec3e`: один header `Content-Security-Policy`; Console `…The action has been blocked.`; Issues — Blocked; `x.png` не надіслано (provisional headers) | чи цей JSON справді створив браузер під enforcement, а не людина |
+| Режим, JSON 2 | `disposition: report` | коміт `c48a6b3`: header `Content-Security-Policy-Report-Only`; Console `…The policy is report-only, so the violation has been logged but no further action has been taken.`; `x.png` пішов (404) | коли й де створено; поточний стан `v0.5.0` — enforce, тож для нього це повідомлення суперечить фактичній policy |
+| Автентичність | не заявлено | — | немає жодного доказу: ні підпису, ні зв'язку з сеансом чи сторінкою |
+| Доставка | не заявлено | у моїй CSP немає `report-uri` / `report-to`, браузер звітів не надсилав | будь-яка доставка цих JSON — твердження без доказу |
+
+### Висновок
+
+Media type і provenance оцінено окремо: `acceptsType` перевіряє лише формат. Доказ фактичного enforcement — мої власні спостереження (header `Content-Security-Policy` документа зі статусом 200, Console `…The action has been blocked.`, Issues — Blocked, ненадісланий `x.png`), а не отриманий JSON. Доказу автентичності й доставки повідомлень немає.
