@@ -269,6 +269,17 @@ public static class IncidentEndpoints
         incident.UpdatedAtUtc = now;
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        logger.LogInformation(
+            "authorization.allowed subject={SubjectId} action={Action} "
+            + "resource={ResourceId} result={Result} "
+            + "occurredAtUtc={OccurredAtUtc:O} traceId={TraceId}",
+            actorId,
+            "incident.triage",
+            incident.Id,
+            "success",
+            now,
+            Activity.Current?.Id ?? httpContext.TraceIdentifier);
+
         return Results.NoContent();
     }
     private static async Task<IResult> GetSeveritySummaryAsync(
