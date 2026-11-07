@@ -59,6 +59,7 @@ public sealed class AuthenticationTests(SecureLabApiFactory factory)
     public async Task A05_CreateWithForgedOwner_UsesPrincipal()
     {
         using var bob = await factory.LoginAsync("bob", StudyPassword);
+        await bob.UseAntiforgeryTokenAsync("/api/antiforgery/token", "X-CSRF-TOKEN");
         var body = NewIncident("a05-" + Guid.NewGuid().ToString("N"));
         body["ownerUserId"] = DbSeeder.AliceId;
 
@@ -93,6 +94,7 @@ public sealed class AuthenticationTests(SecureLabApiFactory factory)
     public async Task A04_CreateWithoutOwner_UsesPrincipal()
     {
         using var bob = await factory.LoginAsync("bob", StudyPassword);
+        await bob.UseAntiforgeryTokenAsync("/api/antiforgery/token", "X-CSRF-TOKEN");
         var body = NewIncident("a04-" + Guid.NewGuid().ToString("N"));
 
         using var response = await bob.PostAsJsonAsync("/api/incidents", body);
@@ -113,7 +115,7 @@ public sealed class AuthenticationTests(SecureLabApiFactory factory)
     public async Task A06_Logout_ThenMe_Returns401()
     {
         using var alice = await factory.LoginAsync("alice", StudyPassword);
-
+        await alice.UseAntiforgeryTokenAsync("/api/antiforgery/token", "X-CSRF-TOKEN");
         using (var before = await alice.GetAsync("/api/me"))
             Assert.Equal(HttpStatusCode.OK, before.StatusCode);
 

@@ -1,3 +1,4 @@
+using SecureLab.Api.Security;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SecureLab.Api.Data;
@@ -53,7 +54,7 @@ public static class Lab02Endpoints
                 Status = row.Status.ToString(),
                 row.CreatedAtUtc
             }));
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting("incident-search");
 
 
         app.MapPost("/api/incidents", async (CreateIncidentRequest request, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
@@ -139,7 +140,7 @@ public static class Lab02Endpoints
                 incident.OccurredAtUtc,
                 incident.CreatedAtUtc
             });
-        }).RequireAuthorization();
+        }).RequireAuthorization().AddEndpointFilter<AntiforgeryFilter>();
 }
 }
 

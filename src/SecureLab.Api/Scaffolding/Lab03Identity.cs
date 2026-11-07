@@ -1,3 +1,4 @@
+using SecureLab.Api.Security;
 using System.Threading.RateLimiting;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
@@ -43,6 +44,15 @@ public static class Lab03Identity
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
                         PermitLimit = 30,
+                        Window = TimeSpan.FromSeconds(10),
+                        QueueLimit = 0
+                    }));
+            options.AddPolicy("incident-search", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 10,
                         Window = TimeSpan.FromSeconds(10),
                         QueueLimit = 0
                     }));
@@ -109,7 +119,7 @@ public static class Lab03Identity
             logger.LogInformation("Auth event {EventType}: result {Result}, trace {TraceId}",
                 "logout", "success", httpContext.TraceIdentifier);
             return Results.NoContent();
-        });
+        }).RequireAuthorization().AddEndpointFilter<AntiforgeryFilter>();
 
         app.MapGet("/api/me", async (HttpContext context, SecureLabDbContext db) =>
         {

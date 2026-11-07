@@ -5,6 +5,7 @@ using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data.Entities;
 using SecureLab.Api.Presentation.Contracts;
 using System.Security.Claims;
+using SecureLab.Api.Security;
 using SecureLab.Api.Data;
 
 namespace SecureLab.Api.Presentation.Endpoints;
@@ -23,13 +24,16 @@ public static class IncidentEndpoints
             .ProducesValidationProblem();
         
         group.MapPut("/{id:guid}", UpdateAsync)
-            .WithName("UpdateIncident");
-        
+            .WithName("UpdateIncident")
+            .AddEndpointFilter<AntiforgeryFilter>();
+
         group.MapPost("/{id:guid}/triage", TriageAsync)
-            .WithName("TriageIncident");
-        
+            .WithName("TriageIncident")
+            .AddEndpointFilter<AntiforgeryFilter>();
+
         group.MapDelete("/{id:guid}", DeleteAsync)
-            .WithName("DeleteIncident");
+            .WithName("DeleteIncident")
+            .AddEndpointFilter<AntiforgeryFilter>();
         
         group.MapGet("/{id:guid}", GetDetailsAsync)
             .WithName("GetIncidentDetails")
