@@ -1,0 +1,5 @@
+POST http://localhost:5080/api/auth/login
+Content-Type: application/json
+Accept: application/problem+json
+
+{"userName":"alice","password":"NotARealPassword1!"}
