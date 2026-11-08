@@ -27,6 +27,7 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
             if (!Sessions.TryGetValue(userName, out var client))
             {
                 client = await factory.LoginAsync(userName, StudyPassword);
+                await client.UseAntiforgeryTokenAsync("/api/antiforgery/token", "X-CSRF-TOKEN");
                 Sessions[userName] = client;
             }
             return client;

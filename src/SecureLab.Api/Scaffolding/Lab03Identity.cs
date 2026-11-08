@@ -1,3 +1,6 @@
+using RedisRateLimiting;
+using StackExchange.Redis;
+using SecureLab.Api.Security;
 using System.Threading.RateLimiting;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
@@ -34,6 +37,17 @@ public static class Lab03Identity
             };
         });
 
+        var redisConfiguration = builder.Configuration["Redis:Configuration"];
+        IConnectionMultiplexer? redis = null;
+        if (!string.IsNullOrWhiteSpace(redisConfiguration))
+        {
+            redis = ConnectionMultiplexer.Connect(redisConfiguration);
+        }
+        else if (!builder.Environment.IsDevelopment())
+        {
+            throw new InvalidOperationException("Redis:Configuration має бути передано поза Git.");
+        }
+
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -46,6 +60,24 @@ public static class Lab03Identity
                         Window = TimeSpan.FromSeconds(10),
                         QueueLimit = 0
                     }));
+            options.AddPolicy("incident-search", httpContext =>
+            {
+                var partitionKey = "search:"
+                                   + (httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous");
+                return redis is null
+                    ? RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromSeconds(10),
+                        QueueLimit = 0
+                    })
+                    : RedisRateLimitPartition.GetFixedWindowRateLimiter(partitionKey, _ => new RedisFixedWindowRateLimiterOptions
+                    {
+                        ConnectionMultiplexerFactory = () => redis,
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromSeconds(10)
+                    });
+            });
         });
     }
 
@@ -109,7 +141,7 @@ public static class Lab03Identity
             logger.LogInformation("Auth event {EventType}: result {Result}, trace {TraceId}",
                 "logout", "success", httpContext.TraceIdentifier);
             return Results.NoContent();
-        });
+        }).RequireAuthorization().AddEndpointFilter<AntiforgeryFilter>();
 
         app.MapGet("/api/me", async (HttpContext context, SecureLabDbContext db) =>
         {

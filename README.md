@@ -136,3 +136,64 @@ docs/                    карта архітектури, варіант, ма
 
 Перед commit перегляньте `git status`, `git diff --staged` і переконайтеся, що
 до Git не потрапили `.env`, cookies, tokens, реальні passwords, dumps або logs.
+
+## ЛР 6: hardening і security review — запуск і перевірка
+
+Звіт: `docs/security-review.md`, модель загроз: `docs/threat-model.md`, знахідки: `docs/findings/`.
+
+### Prerequisites
+
+- .NET SDK 10.0.x (див. `global.json`), Docker Desktop, PowerShell 5.1+ або Bash.
+- Локальний навчальний пароль seed-акаунтів — лише у змінній середовища `SeedUsers__Password` (не в Git).
+- Redis потрібен для limiter пошуку: адреса лише у змінній `Redis__Configuration`.
+  У Development без неї діє in-memory fallback; у Production без неї API не стартує.
+
+### Запуск (PowerShell)
+
+```powershell
+$seedSecret = Read-Host 'Локальний пароль' -AsSecureString
+$env:SeedUsers__Password = [Net.NetworkCredential]::new('', $seedSecret).Password
+Remove-Variable seedSecret
+$env:Redis__Configuration = "127.0.0.1:6379,abortConnect=false"
+
+docker compose --env-file infra/.env.example -f infra/compose.yaml up -d --wait
+docker compose -f infra/compose.redis.yaml up -d --wait
+dotnet restore SecureLab.sln --locked-mode
+dotnet run --project src/SecureLab.Api -- --reset-database
+dotnet run --project src/SecureLab.Api
+```
+
+Bash/zsh: замість перших трьох рядків —
+`read -rsp 'Локальний пароль: ' SeedUsers__Password; export SeedUsers__Password; printf '\n'`,
+змінні задавати через `export`.
+
+### Тести
+
+```powershell
+dotnet test SecureLab.sln -c Release
+dotnet test SecureLab.sln -c Release --filter RegCsrf01
+```
+
+Тести, що змінюють стан, отримують antiforgery-токен через `GET /api/antiforgery/token`
+і header `X-CSRF-TOKEN` (`AntiforgeryTestExtensions.UseAntiforgeryTokenAsync`).
+
+### Production-like профіль (PowerShell, окреме вікно)
+
+```powershell
+$db = "Host=127.0.0.1;Port=54329;Database=securelab;Username=securelab"
+$db = "$db;Password=local-study-password;Include Error Detail=false"
+$env:ASPNETCORE_ENVIRONMENT = "Production"
+$env:ASPNETCORE_URLS = "http://localhost:5080"
+$env:ConnectionStrings__SecureLab = $db
+$env:Redis__Configuration = "127.0.0.1:6379,abortConnect=false"
+dotnet run --project src/SecureLab.Api --no-launch-profile -c Release
+```
+
+`local-study-password` — відкрите навчальне значення лише для локальної БД на 127.0.0.1;
+не використовуйте його повторно. Reset у Production заборонено.
+Контрольована помилка: змінити порт у `$db` на 54399 і виконати `tests/http/lab-06-unexpected-error.http`.
+
+### Клієнт
+
+`http://localhost:5080/auth-lab.html` (вхід, створення, вихід), `http://localhost:5080/browser-lab.html`.
+Змінювальні запити клієнт надсилає через `Client/csrf.js` (`SecureLabCsrf.mutate`).

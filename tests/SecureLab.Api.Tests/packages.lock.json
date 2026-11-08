@@ -485,15 +485,51 @@
           "Npgsql": "10.0.3"
         }
       },
+      "Pipelines.Sockets.Unofficial": {
+        "type": "Transitive",
+        "resolved": "2.2.8",
+        "contentHash": "zG2FApP5zxSx6OcdJQLbZDk2AVlN2BNQD6MorwIfV6gVj0RRxWPEp2LXAxqDGZqeNV1Zp0BNPcNaey/GXmTdvQ=="
+      },
+      "RedisRateLimiting": {
+        "type": "Transitive",
+        "resolved": "1.2.1",
+        "contentHash": "rYisSFv+0bi8iLLUwzPF4afVvCD4nUFI6YiWOy4UTxOzkyfZPA1a0C9o9TyRKQRZ06f+tfgoaUA2q3A0YNnGng==",
+        "dependencies": {
+          "StackExchange.Redis": "2.8.0",
+          "System.Threading.RateLimiting": "10.0.0"
+        }
+      },
+      "RedisRateLimiting.AspNetCore": {
+        "type": "Transitive",
+        "resolved": "1.2.1",
+        "contentHash": "2kjolrrDgVll/fYGWcnxlh7BEmTr/oOp9M2I+orEIWvXciLVlwTVGarAFTcX8mZ7YFtDP3zaofMi08CMh4GVxw==",
+        "dependencies": {
+          "RedisRateLimiting": "1.2.1"
+        }
+      },
       "Scalar.AspNetCore": {
         "type": "Transitive",
         "resolved": "2.16.16",
         "contentHash": "Ax0e0bIh+Upf92k1+pTBUom3e/kbpu20qsrDYmmS1NM721Eq2xF8c789x6IbiNrvW8WwySRzPv/icYYhb6idSg=="
       },
+      "StackExchange.Redis": {
+        "type": "Transitive",
+        "resolved": "2.8.0",
+        "contentHash": "MjAJ0ejH8zLhtuN5+Z+/I07NmPGdVuGEvE2+4xONQoFwgl+7vbQ/A6jlUgH9UkZb4s9Mu9QDyBq1TkRqQcOgTQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "6.0.0",
+          "Pipelines.Sockets.Unofficial": "2.2.8"
+        }
+      },
       "System.Diagnostics.EventLog": {
         "type": "Transitive",
         "resolved": "10.0.10",
         "contentHash": "OvGz3PrzuAI/Sj7LTcXcCe3FClRI1IyRMZjNONcZtFh+Ww7nAtSh4kh08r8KVe/xxkXJPjR0Y1jF7H+N42d4xQ=="
+      },
+      "System.Threading.RateLimiting": {
+        "type": "Transitive",
+        "resolved": "10.0.0",
+        "contentHash": "0QWWGhde46NBFfMO/51QxfRNg7fnzhD8sxY38cP3HR5Sb1jkmSGpttKV1ILO2sJw7vSXQPtr3uqvXsN5iYsu5g=="
       },
       "xunit.abstractions": {
         "type": "Transitive",
@@ -544,6 +580,7 @@
           "Microsoft.EntityFrameworkCore.Relational": "[10.0.10, )",
           "Microsoft.OpenApi": "[2.7.5, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
+          "RedisRateLimiting.AspNetCore": "[1.2.1, )",
           "Scalar.AspNetCore": "[2.16.16, )"
         }
       }

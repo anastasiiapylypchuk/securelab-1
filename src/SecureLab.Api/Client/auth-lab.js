@@ -18,6 +18,7 @@ document.querySelector("#login").addEventListener("submit", async event => {
   const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(Object.fromEntries(new FormData(form))) });
   form.elements.password.value = "";
+  if (response.ok) SecureLabCsrf.reset();
   result.textContent = `Login: ${response.status}`;
 });
 
@@ -36,19 +37,31 @@ document.querySelector("#me").addEventListener("click", async () => {
 document.querySelector("#create").addEventListener("submit", async event => {
   event.preventDefault();
   const data = new FormData(event.currentTarget);
-  const response = await fetch("/api/incidents", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: data.get("title"),
-      description: data.get("description"),
-      severity: data.get("severity"),
-      occurredAtUtc: new Date(data.get("occurredAtUtc")).toISOString()
-    }) });
-  createResult.textContent = `Create: ${response.status}`;
+  try {
+    const response = await SecureLabCsrf.mutate("/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: data.get("title"),
+        description: data.get("description"),
+        severity: data.get("severity"),
+        occurredAtUtc: new Date(data.get("occurredAtUtc")).toISOString()
+      })
+    });
+    createResult.textContent = `Create: ${response.status}`;
+  } catch {
+    createResult.textContent = "Create: потрібен вхід";
+  }
 });
 
 document.querySelector("#logout").addEventListener("click", async () => {
-  const response = await fetch("/api/auth/logout", { method: "POST" });
+  try {
+    const response = await SecureLabCsrf.mutate("/api/auth/logout", { method: "POST" });
+    result.textContent = `Logout: ${response.status}`;
+  } catch {
+    result.textContent = "Logout: не ввійшли";
+  }
+  SecureLabCsrf.reset();
   profile.textContent = "";
   createResult.textContent = "";
-  result.textContent = `Logout: ${response.status}`;
 });

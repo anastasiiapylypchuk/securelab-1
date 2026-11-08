@@ -22,9 +22,19 @@ async function load() {
 document.querySelector("#load").addEventListener("click", load);
 document.querySelector("#edit").addEventListener("submit", async event => {
   event.preventDefault();
-  const response = await fetch("/api/incidents", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title: event.currentTarget.elements.title.value, description: event.currentTarget.elements.description.value,
-      severity: "Low", occurredAtUtc: new Date().toISOString() }) });
+  const form = event.currentTarget;
+  let response;
+  try {
+    response = await SecureLabCsrf.mutate("/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: form.elements.title.value, description: form.elements.description.value,
+        severity: "Low", occurredAtUtc: new Date().toISOString() })
+    });
+  } catch {
+    status.textContent = "POST: потрібен вхід";
+    return;
+  }
   status.textContent = `POST: ${response.status}`;
   if (response.ok) {
     const created = await response.json();
