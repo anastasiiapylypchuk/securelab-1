@@ -1,3 +1,5 @@
+using RedisRateLimiting;
+using StackExchange.Redis;
 using SecureLab.Api.Security;
 using System.Threading.RateLimiting;
 using System.Security.Claims;
@@ -35,6 +37,17 @@ public static class Lab03Identity
             };
         });
 
+        var redisConfiguration = builder.Configuration["Redis:Configuration"];
+        IConnectionMultiplexer? redis = null;
+        if (!string.IsNullOrWhiteSpace(redisConfiguration))
+        {
+            redis = ConnectionMultiplexer.Connect(redisConfiguration);
+        }
+        else if (!builder.Environment.IsDevelopment())
+        {
+            throw new InvalidOperationException("Redis:Configuration має бути передано поза Git.");
+        }
+
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -48,14 +61,23 @@ public static class Lab03Identity
                         QueueLimit = 0
                     }));
             options.AddPolicy("incident-search", httpContext =>
-                RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey: httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous",
-                    factory: _ => new FixedWindowRateLimiterOptions
+            {
+                var partitionKey = "search:"
+                                   + (httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous");
+                return redis is null
+                    ? RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
                     {
                         PermitLimit = 10,
                         Window = TimeSpan.FromSeconds(10),
                         QueueLimit = 0
-                    }));
+                    })
+                    : RedisRateLimitPartition.GetFixedWindowRateLimiter(partitionKey, _ => new RedisFixedWindowRateLimiterOptions
+                    {
+                        ConnectionMultiplexerFactory = () => redis,
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromSeconds(10)
+                    });
+            });
         });
     }
 
