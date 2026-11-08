@@ -34,6 +34,7 @@ Browser client (недовірений ввід, автоматична auth coo
 - Акаунти: alice, bob (Reporter), morgan (Analyst); пароль seed — лише у змінній `SeedUsers__Password`, вводиться через `Read-Host -AsSecureString`, ніде не друкується.
 - Методика: перевірка кожного control на фактичних відповідях (headers, status, тіло, повторне читання стану), відтворення дефекту на `v0.5.0`, виправлення, retest + positive regression, xUnit (`SecureLabApiFactory`, `CookieClient`), ручні сценарії в DevTools Console.
 - Комміти ЛР 6: `fef3c53` (контрольна помилка `.http`), `fac88ef` (F-01), `3bfd5f8` (antiforgery, F-02, F-03, search limiter, REG-CSRF-01), `8e5cd08` (audit успішного triage), `d05df4b` (Redis advanced variant), далі — коміт документації.
+- Злитий стан: `main` до злиття вже містив коміт ЛР 5 `953c135` («csp-report media type check and report trust analysis»), створений після тегу `v0.5.0`. Перевірено `git show --stat 953c135`: він змінює лише `docs/browser-security-evidence.md` і `tests/browser/csp-report-type.js`, не змінює код у `src` і не додає маршрутів. Повторний `git grep -n -E "\.Map(Post|Put|Patch|Delete)\(|csp-report" -- src` на злитому стані дає ті самі 7 змінювальних маршрутів (SC-01…SC-07), тож периметр і висновки review чинні для злитого стану. Фінальну регресію виконано саме на merge-коміті в `main`.
 
 ## 5. Findings summary
 
